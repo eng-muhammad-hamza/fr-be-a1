@@ -10,8 +10,12 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.143.0",
     "httpx>=0.28.1",
+    "pillow>=12.3.0",
     "pytest>=9.1.1",
+    "python-docx>=1.2.0",
+    "selenium>=4.51.0",
     "uvicorn>=0.54.0",
+    "webdriver-manager>=4.1.2",
 ]
 
 [project.scripts]
