@@ -1,7 +1,20 @@
-from fastapi import FastAPI, HTTPException
+from typing import Any
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 app = FastAPI(title="Task API", version="1.0")
+
+
+# Custom validation error handler returning 400 with a clean JSON error message
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=400,
+        content={"error": "Validation failed", "details": exc.errors()},
+    )
+
 
 # In-memory tasks store
 tasks = [
@@ -9,6 +22,10 @@ tasks = [
     {"id": 2, "title": "Read a book", "done": True},
     {"id": 3, "title": "Write code", "done": False},
 ]
+
+
+def get_next_id() -> int:
+    return max([t["id"] for t in tasks], default=0) + 1
 
 
 @app.get("/")
@@ -36,3 +53,23 @@ def get_task(id: int):
         if task["id"] == id:
             return task
     return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
+
+
+@app.post("/tasks", status_code=201)
+def create_task(payload: dict[str, Any]):
+    if not isinstance(payload, dict):
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
+    title = payload.get("title")
+    if title is None or not isinstance(title, str) or title.strip() == "":
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Title is required and cannot be empty"},
+        )
+
+    new_task = {
+        "id": get_next_id(),
+        "title": title.strip(),
+        "done": False,
+    }
+    tasks.append(new_task)
+    return new_task
