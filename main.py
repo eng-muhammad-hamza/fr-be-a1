@@ -95,13 +95,65 @@ def get_health():
 @app.get(
     "/tasks",
     response_model=list[Task],
-    summary="List all tasks",
-    description="Returns the complete list of tasks currently stored in memory.",
+    summary="List all tasks (with optional filtering, search, and pagination)",
+    description="Returns tasks. Supports filtering by ?done=true/false, keyword search with ?search=term, and pagination with ?limit=N&offset=N.",
     tags=["Tasks"],
 )
-def get_tasks():
-    """List all to-do tasks."""
-    return tasks
+def get_tasks(
+    done: Optional[bool] = Query(None, description="Filter tasks by completion status"),
+    search: Optional[str] = Query(None, description="Search keyword contained in task title"),
+    limit: Optional[int] = Query(None, ge=1, description="Maximum number of tasks to return"),
+    offset: Optional[int] = Query(0, ge=0, description="Number of tasks to skip before starting to collect result"),
+):
+    """List to-do tasks with optional query filters, search, and pagination."""
+    result = tasks
+
+    if done is not None:
+        result = [t for t in result if t["done"] is done]
+
+    if search:
+        search_lower = search.strip().lower()
+        result = [t for t in result if search_lower in t["title"].lower()]
+
+    if offset:
+        result = result[offset:]
+
+    if limit is not None:
+        result = result[:limit]
+
+    return result
+
+
+@app.get(
+    "/stats",
+    summary="Compute task statistics",
+    description="Calculates real-time count of total, completed (done), and open (pending) tasks.",
+    tags=["Extra Features"],
+)
+def get_stats():
+    """Computes total, done, and open tasks counts."""
+    total = len(tasks)
+    done_count = sum(1 for t in tasks if t["done"])
+    open_count = total - done_count
+    return {"total": total, "done": done_count, "open": open_count}
+
+
+@app.post(
+    "/reset",
+    summary="Seed & Reset tasks",
+    description="Restores the initial seed of 3 example tasks. Perfect for testing and live demos.",
+    tags=["Extra Features"],
+)
+def reset_tasks():
+    """Reset the in-memory tasks to default seed."""
+    global tasks
+    tasks = [
+        {"id": 1, "title": "Buy groceries", "done": False},
+        {"id": 2, "title": "Read a book", "done": True},
+        {"id": 3, "title": "Write code", "done": False},
+    ]
+    return {"message": "Tasks successfully reset to default seed", "count": len(tasks)}
+
 
 
 @app.get(
