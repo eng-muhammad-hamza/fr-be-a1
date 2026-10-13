@@ -1,9 +1,16 @@
-from typing import Any
-from fastapi import FastAPI, Request, Response, status
+from typing import Any, Optional
+from fastapi import FastAPI, Path, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
-app = FastAPI(title="Task API", version="1.0")
+app = FastAPI(
+    title="Task API",
+    version="1.0",
+    description="A simple, fast in-memory CRUD API for managing your to-do list tasks.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
 
 # Custom validation error handler returning 400 with a clean JSON error message
@@ -15,8 +22,38 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+# Pydantic schemas for rich Swagger documentation
+class Task(BaseModel):
+    id: int = Field(..., description="Unique task identifier", examples=[1])
+    title: str = Field(..., description="Description or title of the task", examples=["Buy milk"])
+    done: bool = Field(False, description="Completion status of the task", examples=[False])
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, description="Title of the new task (required, non-empty)", examples=["Buy milk"])
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, description="Updated title of the task", examples=["Buy almond milk"])
+    done: Optional[bool] = Field(None, description="Updated completion status", examples=[True])
+
+
+class ErrorResponse(BaseModel):
+    error: str = Field(..., description="Error message describing what went wrong", examples=["Task 99 not found"])
+
+
+class ApiInfo(BaseModel):
+    name: str = Field(..., examples=["Task API"])
+    version: str = Field(..., examples=["1.0"])
+    endpoints: list[str] = Field(..., examples=[["/tasks"]])
+
+
+class HealthResponse(BaseModel):
+    status: str = Field(..., examples=["ok"])
+
+
 # In-memory tasks store
-tasks = [
+tasks: list[dict[str, Any]] = [
     {"id": 1, "title": "Buy groceries", "done": False},
     {"id": 2, "title": "Read a book", "done": True},
     {"id": 3, "title": "Write code", "done": False},
@@ -27,8 +64,15 @@ def get_next_id() -> int:
     return max([t["id"] for t in tasks], default=0) + 1
 
 
-@app.get("/")
+@app.get(
+    "/",
+    response_model=ApiInfo,
+    summary="API Root Information",
+    description="Returns metadata about the API and its primary endpoints.",
+    tags=["General"],
+)
 def get_root():
+    """Returns metadata about the Task API."""
     return {
         "name": "Task API",
         "version": "1.0",
@@ -36,26 +80,57 @@ def get_root():
     }
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="Health Check",
+    description="Returns the operational status of the server to confirm it is healthy and responsive.",
+    tags=["General"],
+)
 def get_health():
+    """Returns server health status."""
     return {"status": "ok"}
 
 
-@app.get("/tasks")
+@app.get(
+    "/tasks",
+    response_model=list[Task],
+    summary="List all tasks",
+    description="Returns the complete list of tasks currently stored in memory.",
+    tags=["Tasks"],
+)
 def get_tasks():
+    """List all to-do tasks."""
     return tasks
 
 
-@app.get("/tasks/{id}")
-def get_task(id: int):
+@app.get(
+    "/tasks/{id}",
+    response_model=Task,
+    responses={404: {"model": ErrorResponse, "description": "Task not found"}},
+    summary="Get a single task by ID",
+    description="Retrieves a specific task by its numeric ID. Returns 404 if not found.",
+    tags=["Tasks"],
+)
+def get_task(id: int = Path(..., description="The ID of the task to retrieve", examples=[1])):
+    """Retrieve a single task by ID."""
     for task in tasks:
         if task["id"] == id:
             return task
     return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
 
 
-@app.post("/tasks", status_code=201)
+@app.post(
+    "/tasks",
+    response_model=Task,
+    status_code=status.HTTP_201_CREATED,
+    responses={400: {"model": ErrorResponse, "description": "Bad Request - Title is missing or empty"}},
+    summary="Create a new task",
+    description="Creates a new to-do task with next sequential ID, sets done to false, and returns 201 Created.",
+    tags=["Tasks"],
+)
 def create_task(payload: dict[str, Any]):
+    """Create a new task."""
     if not isinstance(payload, dict):
         return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
     title = payload.get("title")
@@ -74,15 +149,28 @@ def create_task(payload: dict[str, Any]):
     return new_task
 
 
-@app.put("/tasks/{id}")
-def update_task(id: int, payload: dict[str, Any]):
+@app.put(
+    "/tasks/{id}",
+    response_model=Task,
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad Request - Invalid or empty body"},
+        404: {"model": ErrorResponse, "description": "Task not found"},
+    },
+    summary="Update an existing task",
+    description="Replaces a task's title and/or done status with what is provided in the request body.",
+    tags=["Tasks"],
+)
+def update_task(
+    id: int = Path(..., description="The ID of the task to update", examples=[1]),
+    payload: dict[str, Any] = ...,
+):
+    """Update title and/or done flag of an existing task."""
     if not isinstance(payload, dict) or not payload:
         return JSONResponse(
             status_code=400,
             content={"error": "Request body cannot be empty"},
         )
 
-    # Find the task
     task_index = -1
     for idx, t in enumerate(tasks):
         if t["id"] == id:
@@ -116,8 +204,16 @@ def update_task(id: int, payload: dict[str, Any]):
     return current_task
 
 
-@app.delete("/tasks/{id}", status_code=204)
-def delete_task(id: int):
+@app.delete(
+    "/tasks/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"model": ErrorResponse, "description": "Task not found"}},
+    summary="Delete a task",
+    description="Removes a task by its ID. Returns 204 No Content on success, or 404 if not found.",
+    tags=["Tasks"],
+)
+def delete_task(id: int = Path(..., description="The ID of the task to delete", examples=[1])):
+    """Delete a task by ID."""
     task_index = -1
     for idx, t in enumerate(tasks):
         if t["id"] == id:
