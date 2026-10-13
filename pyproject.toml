@@ -1,0 +1,22 @@
+[project]
+name = "fr-be-a1"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "bsse23001", email = "bsse23001@itu.edu.pk" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.143.0",
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+fr-be-a1 = "fr_be_a1:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
